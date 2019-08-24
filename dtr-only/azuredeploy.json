@@ -12,8 +12,8 @@
     "scripts": {
       "type": "object",
       "defaultValue": {
-        "installDockerEE": "https://raw.githubusercontent.com/Microsoft/Docker-EE-on-Azure-Stack-Deployment/master/multi-node/install-docker-ee.sh",
-        "installUCP": "https://raw.githubusercontent.com/Microsoft/Docker-EE-on-Azure-Stack-Deployment/master/multi-node/install-ucp.sh",
+        "installDockerEE": "https://raw.githubusercontent.com/stevenfollis/docker-arm-templates/master/dtr-only/scripts/install-docker-ee.sh",
+        "installUCP": "https://raw.githubusercontent.com/stevenfollis/docker-arm-templates/master/dtr-only/scripts/install-ucp.sh",
         "installDTR": "https://raw.githubusercontent.com/Microsoft/Docker-EE-on-Azure-Stack-Deployment/master/multi-node/install-dtr.sh"
       }
     },
@@ -34,7 +34,7 @@
     }
   },
   "variables": {
-    "labName": "[uniqueString(resourceGroup().id))]",
+    "labName": "[uniqueString(resourceGroup().id)]",
     "shared": {
       "storage": {
         "name": "[concat('sa', uniqueString(resourceGroup().id))]",
@@ -67,13 +67,13 @@
       }
     },
     "api": {
-      "availabilitySets": "2018-10-01",
-      "loadBalancers": "2018-07-01",
+      "availabilitySets": "2019-03-01",
+      "loadBalancers": "2019-04-01",
       "networkInterfaces": "2019-04-01",
-      "publicIPAddresses": "2018-07-01",
+      "publicIPAddresses": "2019-04-01",
       "storageAccounts": "2019-04-01",
-      "virtualMachines": "2018-10-01",
-      "virtualNetworks": "2018-07-01"
+      "virtualMachines": "2019-03-01",
+      "virtualNetworks": "2019-04-01"
     }
   },
   "resources": [{
@@ -286,6 +286,7 @@
           "properties": {
             "primary": "true",
             "privateIPAllocationMethod": "Static",
+            "privateIPAddress": "[concat('10.0.0.', copyIndex(4))]",
             "publicIPAddress": {
               "id": "[resourceId('Microsoft.Network/publicIPAddresses', concat('dtr-', padLeft(copyIndex(1), 2, '0')))]"
             },
@@ -341,14 +342,38 @@
           }]
         },
         "availabilitySet": {
-          "id": "[resourceId('Microsoft.Compute/availabilitySets', 'dtr')]"
+          "id": "[resourceId('Microsoft.Compute/availabilitySets', variables('dtr').avSet)]"
         }
       },
       "dependsOn": [
         "[resourceId('Microsoft.Compute/availabilitySets', variables('dtr').avSet)]",
         "[resourceId('Microsoft.Network/networkInterfaces', concat('dtr-', padLeft(copyIndex(1), 2, '0')))]"
       ],
-      "resources": []
+      "resources": [{
+        "name": "InstallDockerEnterprise",
+        "type": "extensions",
+        "location": "[resourceGroup().location]",
+        "apiVersion": "[variables('api').virtualMachines]",
+        "dependsOn": [
+          "[resourceId('Microsoft.Compute/virtualMachines', concat('dtr-', padLeft(copyIndex(1), 2, '0')))]",
+          "[resourceId('Microsoft.Network/publicIPAddresses', 'dtr')]"
+        ],
+        "tags": {
+          "displayName": "InstallDocker"
+        },
+        "properties": {
+          "publisher": "Microsoft.Azure.Extensions",
+          "type": "CustomScript",
+          "typeHandlerVersion": "2.0",
+          "autoUpgradeMinorVersion": true,
+          "settings": {
+            "fileUris": [
+              "[parameters('scripts').installDockerEE]"
+            ],
+            "commandToExecute": "[concat('sh install-docker-ee.sh ', parameters('dockerEEURL'), ' ', parameters('versions').engine, ' && sh install-ucp.sh ', reference(resourceId('Microsoft.Network/publicIPAddresses', 'dtr')).dnsSettings.fqdn, ' Manager ', parameters('versions').ucp)]"
+          }
+        }
+      }]
     }
   ],
   "outputs": {
