@@ -16,7 +16,10 @@ readonly UCP_NODE=$(cat /etc/hostname)
 
 # UCP Admin credentials
 readonly UCP_USERNAME="admin"
-readonly UCP_PASSWORD='Docker123!'
+readonly UCP_PASSWORD='DockerEE123!'
+
+# Non-standard UCP port
+readonly UCP_CONTROLLER_PORT=5000
 
 checkDTR() {
 
@@ -47,7 +50,7 @@ installDTR() {
         --rm \
         docker/dtr:${DTR_VERSION} install \
         --dtr-external-url "https://${DTR_FQDN}" \
-        --ucp-url "https://${UCP_FQDN}" \
+        --ucp-url "https://${UCP_FQDN}:${UCP_CONTROLLER_PORT}" \
         --ucp-node "${UCP_NODE}" \
         --ucp-username "${UCP_USERNAME}" \
         --ucp-password "${UCP_PASSWORD}" \
