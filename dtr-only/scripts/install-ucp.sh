@@ -51,7 +51,8 @@ installUCP() {
         --admin-username "${UCP_ADMIN}" \
         --admin-password "${UCP_PASSWORD}" \
         --san "${UCP_FQDN}" \
-        --external-service-lb "${APPS_LB_FQDN}"
+        --skip-cloud-provider-check \
+        --unmanaged-cni
 
     # Wait for node to reach a ready state
     until [ $(curl --request GET --url "https://${UCP_FQDN}/_ping" --insecure --silent --header 'Accept: application/json' | grep OK) ]
