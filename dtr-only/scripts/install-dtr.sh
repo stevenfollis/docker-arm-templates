@@ -11,6 +11,11 @@ readonly DTR_FQDN=$2
 # Version of DTR to be installed
 readonly DTR_VERSION=$3
 
+# Azure Storage Account
+readonly AZURE_STORAGE_ACCOUNT=$4
+readonly AZURE_STORAGE_KEY=$5
+readonly AZURE_STORAGE_CONTAINER=$6
+
 # Node to install DTR on
 readonly UCP_NODE=$(cat /etc/hostname)
 
@@ -43,39 +48,71 @@ checkDTR() {
 
 installDTR() {
 
-    echo "installDTR: Installing ${DTR_VERSION} Docker Trusted Registry (DTR) on ${UCP_NODE} for UCP at ${UCP_FQDN} and with a DTR Load Balancer at ${DTR_FQDN}"
+  echo "installDTR: Installing ${DTR_VERSION} Docker Trusted Registry (DTR) on ${UCP_NODE} for UCP at ${UCP_FQDN} and with a DTR Load Balancer at ${DTR_FQDN}"
 
-    # Install Docker Trusted Registry
-    docker run \
-      --rm \
-      docker/dtr:${DTR_VERSION} install \
-      --dtr-external-url "https://${DTR_FQDN}" \
-      --ucp-url "https://${UCP_FQDN}:${UCP_CONTROLLER_PORT}" \
-      --ucp-node "${UCP_NODE}" \
-      --ucp-username "${UCP_USERNAME}" \
-      --ucp-password "${UCP_PASSWORD}" \
-      --ucp-insecure-tls 
+  # Install Docker Trusted Registry
+  docker run \
+    --rm \
+    docker/dtr:${DTR_VERSION} install \
+    --dtr-external-url "https://${DTR_FQDN}" \
+    --ucp-url "https://${UCP_FQDN}:${UCP_CONTROLLER_PORT}" \
+    --ucp-node "${UCP_NODE}" \
+    --ucp-username "${UCP_USERNAME}" \
+    --ucp-password "${UCP_PASSWORD}" \
+    --ucp-insecure-tls 
 
-    echo "installDTR: Finished installing Docker Trusted Registry (DTR)"
+  echo "installDTR: Finished installing Docker Trusted Registry (DTR)"
+
+  configureStorage
 
 }
 
 joinDTR() {
 
-    # Get DTR Replica ID
-    REPLICA_ID=$(curl --request GET --insecure --silent --url "https://${DTR_FQDN}/api/v0/meta/settings" --user "${UCP_USERNAME}":"${UCP_PASSWORD}" --header 'Accept: application/json' | jq --raw-output .replicaID)
-    echo "joinDTR: Joining DTR with Replica ID ${REPLICA_ID}"
+  # Get DTR Replica ID
+  REPLICA_ID=$(curl --request GET --insecure --silent --url "https://${DTR_FQDN}/api/v0/meta/settings" --user "${UCP_USERNAME}":"${UCP_PASSWORD}" --header 'Accept: application/json' | jq --raw-output .replicaID)
+  echo "joinDTR: Joining DTR with Replica ID ${REPLICA_ID}"
 
-    # Join an existing Docker Trusted Registry
-    docker run \
-      --rm \
-      docker/dtr:${DTR_VERSION} join \
-      --existing-replica-id "${REPLICA_ID}" \
-      --ucp-url "https://${UCP_FQDN}:${UCP_CONTROLLER_PORT}" \
-      --ucp-node "${UCP_NODE}" \
-      --ucp-username "${UCP_USERNAME}" \
-      --ucp-password "${UCP_PASSWORD}" \
-      --ucp-insecure-tls
+  # Join an existing Docker Trusted Registry
+  docker run \
+    --rm \
+    docker/dtr:${DTR_VERSION} join \
+    --existing-replica-id "${REPLICA_ID}" \
+    --ucp-url "https://${UCP_FQDN}:${UCP_CONTROLLER_PORT}" \
+    --ucp-node "${UCP_NODE}" \
+    --ucp-username "${UCP_USERNAME}" \
+    --ucp-password "${UCP_PASSWORD}" \
+    --ucp-insecure-tls
+
+}
+
+configureStorage() {
+
+  curl \
+    --insecure \
+    --request PUT \
+    --url "https://${DTR_FQDN}/api/v0/admin/settings/registry/simple" \
+    --user "${UCP_USERNAME}":"${UCP_PASSWORD}" \
+    --header 'content-type: application/json' \
+    --data "{
+      \"storage\": {
+        \"azure\": {
+          \"accountkey\": \"${AZURE_STORAGE_KEY}\",
+          \"accountname\": \"${AZURE_STORAGE_ACCOUNT}\",
+          \"container\": \"${AZURE_STORAGE_CONTAINER}\",
+          \"realm\": \"core.windows.net\"
+        },
+        \"delete\": {
+          \"enabled\": true
+        },
+        \"maintenance\": {
+          \"readonly\": {
+            \"enabled\": false
+          }
+        }
+      }
+    }"
+
 
 }
 

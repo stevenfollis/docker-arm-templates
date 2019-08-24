@@ -14,7 +14,7 @@
       "defaultValue": {
         "installDockerEE": "https://raw.githubusercontent.com/stevenfollis/docker-arm-templates/master/dtr-only/scripts/install-docker-ee.sh",
         "installUCP": "https://raw.githubusercontent.com/stevenfollis/docker-arm-templates/master/dtr-only/scripts/install-ucp.sh",
-        "installDTR": "https://raw.githubusercontent.com/Microsoft/Docker-EE-on-Azure-Stack-Deployment/master/multi-node/install-dtr.sh"
+        "installDTR": "https://raw.githubusercontent.com/stevenfollis/docker-arm-templates/master/dtr-only/scripts/install-dtr.sh"
       }
     },
     "credentials": {
@@ -38,8 +38,9 @@
     "shared": {
       "storage": {
         "name": "[concat('sa', uniqueString(resourceGroup().id))]",
-        "type": "Premium_LRS",
-        "vhdContainerName": "vhd"
+        "sku": "Premium_LRS",
+        "kind": "StorageV2",
+        "container": "dtr"
       },
       "networking": {
         "name": "vnet",
@@ -86,7 +87,19 @@
       },
       "sku": {
         "name": "[variables('shared').storage.type]"
-      }
+      },
+      "kind": "StorageV2",
+      "resources": [{
+        "type": "blobServices/containers",
+        "apiVersion": "[variables('api').storageAccounts]",
+        "name": "[concat('default/', variables('shared').storage.container)]",
+        "dependsOn": [
+          "[resourceId('Microsoft.Storage/storageAccounts', toLower(variables('shared').storage.name))]"
+        ],
+        "properties": {
+          "publicAccess": "None"
+        }
+      }]
     },
     {
       "apiVersion": "[variables('api').virtualNetworks]",
@@ -147,10 +160,7 @@
         "count": "[variables('dtr').instances]"
       },
       "properties": {
-        "publicIPAllocationMethod": "Dynamic",
-        "dnsSettings": {
-          "domainNameLabel": "[concat(variables('labName'), '-dtr', padLeft(copyIndex(1), 2, '0'))]"
-        }
+        "publicIPAllocationMethod": "Dynamic"
       }
     },
     {
@@ -336,9 +346,10 @@
           "settings": {
             "fileUris": [
               "[parameters('scripts').installDockerEE]",
-              "[parameters('scripts').installUCP]"
+              "[parameters('scripts').installUCP]",
+              "[parameters('scripts').installDTR]"
             ],
-            "commandToExecute": "[concat('sh install-docker-ee.sh ', parameters('dockerEEURL'), ' ', parameters('versions').engine, ' && sh install-ucp.sh ', reference(resourceId('Microsoft.Network/publicIPAddresses', 'dtr')).dnsSettings.fqdn, ' Manager ', parameters('versions').ucp)]"
+            "commandToExecute": "[concat('sh install-docker-ee.sh ', parameters('dockerEEURL'), ' ', parameters('versions').engine, ' && sh install-ucp.sh ', reference(resourceId('Microsoft.Network/publicIPAddresses', 'dtr')).dnsSettings.fqdn, ' Manager ', parameters('versions').ucp, ' && sh install-dtr.sh ', reference(resourceId('Microsoft.Network/publicIPAddresses', 'dtr')).dnsSettings.fqdn, ' ', reference(resourceId('Microsoft.Network/publicIPAddresses', 'dtr')).dnsSettings.fqdn, ' ', parameters('versions').dtr, ' ', variables('shared').storage.name, ' ', listKeys(resourceId('Microsoft.Storage/storageAccounts', variables('shared').storage.name), '2016-01-01').keys[0].value, ' ', variables('shared').storage.container)]"
           }
         }
       }]
@@ -408,9 +419,10 @@
           "settings": {
             "fileUris": [
               "[parameters('scripts').installDockerEE]",
-              "[parameters('scripts').installUCP]"
+              "[parameters('scripts').installUCP]",
+              "[parameters('scripts').installDTR]"
             ],
-            "commandToExecute": "[concat('sh install-docker-ee.sh ', parameters('dockerEEURL'), ' ', parameters('versions').engine, ' && sh install-ucp.sh ', reference(resourceId('Microsoft.Network/publicIPAddresses', 'dtr')).dnsSettings.fqdn, ' Manager ', parameters('versions').ucp)]"
+            "commandToExecute": "[concat('sh install-docker-ee.sh ', parameters('dockerEEURL'), ' ', parameters('versions').engine, ' && sh install-ucp.sh ', reference(resourceId('Microsoft.Network/publicIPAddresses', 'dtr')).dnsSettings.fqdn, ' Manager ', parameters('versions').ucp, ' && sh install-dtr.sh ', reference(resourceId('Microsoft.Network/publicIPAddresses', 'dtr')).dnsSettings.fqdn, ' ', reference(resourceId('Microsoft.Network/publicIPAddresses', 'dtr')).dnsSettings.fqdn, ' ', parameters('versions').dtr)]"
           }
         }
       }]
