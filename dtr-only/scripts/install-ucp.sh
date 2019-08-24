@@ -6,10 +6,10 @@
 readonly UCP_FQDN=$1
 
 # Is node a worker or manager?
-readonly NODE_ROLE=$3
+readonly NODE_ROLE=$2
 
 # Version of UCP to be installed
-readonly UCP_VERSION=$4
+readonly UCP_VERSION=$3
 
 # Name of current node
 readonly NODE_NAME=$(cat /etc/hostname)
