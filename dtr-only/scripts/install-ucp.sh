@@ -59,7 +59,7 @@ installUCP() {
         --unmanaged-cni
 
     # Wait for node to reach a ready state
-    until [ $(curl --request GET --url "https://${UCP_FQDN}/_ping" --insecure --silent --header 'Accept: application/json' | grep OK) ]
+    until [ $(curl --request GET --url "https://${UCP_FQDN}:${UCP_CONTROLLER_PORT}/_ping" --insecure --silent --header 'Accept: application/json' | grep OK) ]
     do
         echo '...created cluster, waiting for a ready state'
         sleep 5
@@ -74,13 +74,13 @@ installUCP() {
 joinUCP() {
 
     # Get Authentication Token
-    AUTH_TOKEN=$(curl --request POST --url "https://${UCP_FQDN}/auth/login" --insecure --silent --header 'Accept: application/json' --data '{ "username": "'${UCP_ADMIN}'", "password": "'${UCP_PASSWORD}'" }' | jq --raw-output .auth_token)
+    AUTH_TOKEN=$(curl --request POST --url "https://${UCP_FQDN}:${UCP_CONTROLLER_PORT}/auth/login" --insecure --silent --header 'Accept: application/json' --data '{ "username": "'${UCP_ADMIN}'", "password": "'${UCP_PASSWORD}'" }' | jq --raw-output .auth_token)
 
     # Get Swarm Manager IP Address + Port
-    UCP_MANAGER_ADDRESS=$(curl --request GET --url "https://${UCP_FQDN}/info" --insecure --silent --header 'Accept: application/json' --header "Authorization: Bearer ${AUTH_TOKEN}" | jq --raw-output .Swarm.RemoteManagers[0].Addr)
+    UCP_MANAGER_ADDRESS=$(curl --request GET --url "https://${UCP_FQDN}:${UCP_CONTROLLER_PORT}/info" --insecure --silent --header 'Accept: application/json' --header "Authorization: Bearer ${AUTH_TOKEN}" | jq --raw-output .Swarm.RemoteManagers[0].Addr)
     
     # Get Swarm Join Tokens
-    UCP_JOIN_TOKENS=$(curl --request GET --url "https://${UCP_FQDN}/swarm" --insecure --silent --header 'Accept: application/json' --header "Authorization: Bearer ${AUTH_TOKEN}" | jq .JoinTokens)
+    UCP_JOIN_TOKENS=$(curl --request GET --url "https://${UCP_FQDN}:${UCP_CONTROLLER_PORT}/swarm" --insecure --silent --header 'Accept: application/json' --header "Authorization: Bearer ${AUTH_TOKEN}" | jq .JoinTokens)
     UCP_JOIN_TOKEN_MANAGER=$(echo "${UCP_JOIN_TOKENS}" | jq --raw-output .Manager)
     UCP_JOIN_TOKEN_WORKER=$(echo "${UCP_JOIN_TOKENS}" | jq --raw-output .Worker)
 
@@ -95,7 +95,7 @@ joinUCP() {
     fi
 
     # Wait for node to reach a ready state
-    while [ "$(curl --request GET --url "https://${UCP_FQDN}/nodes/${NODE_NAME}" --insecure --silent --header 'Accept: application/json' --header "Authorization: Bearer ${AUTH_TOKEN}" | jq --raw-output .Status.State)" != "ready" ]
+    while [ "$(curl --request GET --url "https://${UCP_FQDN}:${UCP_CONTROLLER_PORT}/nodes/${NODE_NAME}" --insecure --silent --header 'Accept: application/json' --header "Authorization: Bearer ${AUTH_TOKEN}" | jq --raw-output .Status.State)" != "ready" ]
     do
         echo '...node joined, waiting for a ready state'
         sleep 5
