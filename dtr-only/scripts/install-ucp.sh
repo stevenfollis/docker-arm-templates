@@ -15,8 +15,11 @@ readonly UCP_VERSION=$3
 readonly NODE_NAME=$(cat /etc/hostname)
 
 # UCP Administrator Credentials
-readonly UCP_ADMIN="admin"
-readonly UCP_PASSWORD="Docker123!"
+readonly UCP_ADMIN='admin'
+readonly UCP_PASSWORD='DockerEE123!'
+
+# Non-standard UCP port
+readonly UCP_CONTROLLER_PORT=5000
 
 # Install jq library for parsing JSON
 sudo apt-get -qq install jq -y
@@ -50,6 +53,7 @@ installUCP() {
         docker/ucp:"${UCP_VERSION}" install \
         --admin-username "${UCP_ADMIN}" \
         --admin-password "${UCP_PASSWORD}" \
+        --controller-port "${UCP_CONTROLLER_PORT}" \
         --san "${UCP_FQDN}" \
         --skip-cloud-provider-check \
         --unmanaged-cni

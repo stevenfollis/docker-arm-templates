@@ -175,26 +175,6 @@
           "name": "LoadBalancerBackEnd"
         }],
         "loadBalancingRules": [{
-            "name": "tcp80",
-            "properties": {
-              "frontendIPConfiguration": {
-                "id": "[resourceId('Microsoft.Network/loadBalancers/frontendIpConfigurations', 'dtr', 'LoadBalancerFrontEnd')]"
-              },
-              "frontendPort": 80,
-              "backendPort": 80,
-              "enableFloatingIP": false,
-              "idleTimeoutInMinutes": 4,
-              "protocol": "Tcp",
-              "loadDistribution": "Default",
-              "backendAddressPool": {
-                "id": "[resourceId('Microsoft.Network/loadBalancers/backendAddressPools', 'dtr', 'LoadBalancerBackEnd')]"
-              },
-              "probe": {
-                "id": "[resourceId('Microsoft.Network/loadBalancers/probes', 'dtr', 'tcp80')]"
-              }
-            }
-          },
-          {
             "name": "tcp443",
             "properties": {
               "frontendIPConfiguration": {
@@ -215,13 +195,13 @@
             }
           },
           {
-            "name": "tcp8080",
+            "name": "tcp5000",
             "properties": {
               "frontendIPConfiguration": {
                 "id": "[resourceId('Microsoft.Network/loadBalancers/frontendIpConfigurations', 'dtr', 'LoadBalancerFrontEnd')]"
               },
-              "frontendPort": 8080,
-              "backendPort": 8080,
+              "frontendPort": 5000,
+              "backendPort": 5000,
               "enableFloatingIP": false,
               "idleTimeoutInMinutes": 4,
               "protocol": "Tcp",
@@ -230,21 +210,12 @@
                 "id": "[resourceId('Microsoft.Network/loadBalancers/backendAddressPools', 'dtr', 'LoadBalancerBackEnd')]"
               },
               "probe": {
-                "id": "[resourceId('Microsoft.Network/loadBalancers/probes', 'dtr', 'tcp8080')]"
+                "id": "[resourceId('Microsoft.Network/loadBalancers/probes', 'dtr', 'tcp5000')]"
               }
             }
           }
         ],
         "probes": [{
-            "name": "tcp80",
-            "properties": {
-              "protocol": "Tcp",
-              "port": 80,
-              "intervalInSeconds": 5,
-              "numberOfProbes": 2
-            }
-          },
-          {
             "name": "tcp443",
             "properties": {
               "protocol": "Tcp",
@@ -254,10 +225,10 @@
             }
           },
           {
-            "name": "tcp8080",
+            "name": "tcp5000",
             "properties": {
               "protocol": "Tcp",
-              "port": 8080,
+              "port": 5000,
               "intervalInSeconds": 5,
               "numberOfProbes": 2
             }
@@ -307,11 +278,78 @@
     },
     {
       "type": "Microsoft.Compute/virtualMachines",
+      "name": "dtr-01",
+      "apiVersion": "[variables('api').virtualMachines]",
+      "location": "[resourceGroup().location]",
+      "tags": {
+        "displayName": "VM - DTR01"
+      },
+      "properties": {
+        "hardwareProfile": {
+          "vmSize": "[variables('dtr').vmSize]"
+        },
+        "storageProfile": {
+          "imageReference": "[variables('dtr').imageReference]",
+          "osDisk": {
+            "diskSizeGB": 128,
+            "managedDisk": {
+              "storageAccountType": "Premium_LRS"
+            },
+            "createOption": "FromImage"
+          }
+        },
+        "osProfile": {
+          "computerName": "dtr-01",
+          "adminUsername": "[parameters('credentials').adminUsername]",
+          "adminPassword": "[parameters('credentials').adminPassword]"
+        },
+        "networkProfile": {
+          "networkInterfaces": [{
+            "id": "[resourceId('Microsoft.Network/networkInterfaces', 'dtr-01')]"
+          }]
+        },
+        "availabilitySet": {
+          "id": "[resourceId('Microsoft.Compute/availabilitySets', variables('dtr').avSet)]"
+        }
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Compute/availabilitySets', variables('dtr').avSet)]",
+        "[resourceId('Microsoft.Network/networkInterfaces', 'dtr-01')]"
+      ],
+      "resources": [{
+        "name": "InstallDockerEnterprise",
+        "type": "extensions",
+        "location": "[resourceGroup().location]",
+        "apiVersion": "[variables('api').virtualMachines]",
+        "dependsOn": [
+          "[resourceId('Microsoft.Compute/virtualMachines', 'dtr-01')]",
+          "[resourceId('Microsoft.Network/publicIPAddresses', 'dtr')]"
+        ],
+        "tags": {
+          "displayName": "InstallDocker"
+        },
+        "properties": {
+          "publisher": "Microsoft.Azure.Extensions",
+          "type": "CustomScript",
+          "typeHandlerVersion": "2.0",
+          "autoUpgradeMinorVersion": true,
+          "settings": {
+            "fileUris": [
+              "[parameters('scripts').installDockerEE]",
+              "[parameters('scripts').installUCP]"
+            ],
+            "commandToExecute": "[concat('sh install-docker-ee.sh ', parameters('dockerEEURL'), ' ', parameters('versions').engine, ' && sh install-ucp.sh ', reference(resourceId('Microsoft.Network/publicIPAddresses', 'dtr')).dnsSettings.fqdn, ' Manager ', parameters('versions').ucp)]"
+          }
+        }
+      }]
+    },
+    {
+      "type": "Microsoft.Compute/virtualMachines",
       "copy": {
         "name": "VMCopy",
-        "count": "[variables('dtr').instances]"
+        "count": "[sub(variables('dtr').instances, 1)]"
       },
-      "name": "[concat('dtr-', padLeft(copyIndex(1), 2, '0'))]",
+      "name": "[concat('dtr-', padLeft(copyIndex(2), 2, '0'))]",
       "apiVersion": "[variables('api').virtualMachines]",
       "location": "[resourceGroup().location]",
       "tags": {
@@ -332,13 +370,13 @@
           }
         },
         "osProfile": {
-          "computerName": "[concat('dtr', padLeft(copyIndex(1), 2, '0'))]",
+          "computerName": "[concat('dtr', padLeft(copyIndex(2), 2, '0'))]",
           "adminUsername": "[parameters('credentials').adminUsername]",
           "adminPassword": "[parameters('credentials').adminPassword]"
         },
         "networkProfile": {
           "networkInterfaces": [{
-            "id": "[resourceId('Microsoft.Network/networkInterfaces', concat('dtr-', padLeft(copyIndex(1), 2, '0')))]"
+            "id": "[resourceId('Microsoft.Network/networkInterfaces', concat('dtr-', padLeft(copyIndex(2), 2, '0')))]"
           }]
         },
         "availabilitySet": {
@@ -347,7 +385,7 @@
       },
       "dependsOn": [
         "[resourceId('Microsoft.Compute/availabilitySets', variables('dtr').avSet)]",
-        "[resourceId('Microsoft.Network/networkInterfaces', concat('dtr-', padLeft(copyIndex(1), 2, '0')))]"
+        "[resourceId('Microsoft.Network/networkInterfaces', concat('dtr-', padLeft(copyIndex(2), 2, '0')))]"
       ],
       "resources": [{
         "name": "InstallDockerEnterprise",
@@ -355,7 +393,8 @@
         "location": "[resourceGroup().location]",
         "apiVersion": "[variables('api').virtualMachines]",
         "dependsOn": [
-          "[resourceId('Microsoft.Compute/virtualMachines', concat('dtr-', padLeft(copyIndex(1), 2, '0')))]",
+          "[resourceId('Microsoft.Compute/virtualMachines/extensions', 'dtr-01', 'InstallDockerEnterprise')]",
+          "[resourceId('Microsoft.Compute/virtualMachines', concat('dtr-', padLeft(copyIndex(2), 2, '0')))]",
           "[resourceId('Microsoft.Network/publicIPAddresses', 'dtr')]"
         ],
         "tags": {
@@ -368,7 +407,8 @@
           "autoUpgradeMinorVersion": true,
           "settings": {
             "fileUris": [
-              "[parameters('scripts').installDockerEE]"
+              "[parameters('scripts').installDockerEE]",
+              "[parameters('scripts').installUCP]"
             ],
             "commandToExecute": "[concat('sh install-docker-ee.sh ', parameters('dockerEEURL'), ' ', parameters('versions').engine, ' && sh install-ucp.sh ', reference(resourceId('Microsoft.Network/publicIPAddresses', 'dtr')).dnsSettings.fqdn, ' Manager ', parameters('versions').ucp)]"
           }
