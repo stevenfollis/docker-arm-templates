@@ -23,13 +23,13 @@ readonly UCP_CONTROLLER_PORT=5000
 
 checkDTR() {
 
+    # Pre-Pull Images
+    docker run --rm docker/dtr:"${DTR_VERSION}" images --list | xargs -L 1 docker pull
+
     # Check if DTR exists by attempting to hit its load balancer
     STATUS=$(curl --request GET --url "https://${DTR_FQDN}/_ping" --insecure --silent --output /dev/null -w '%{http_code}' --max-time 5)
     
     echo "checkDTR: API status for ${DTR_FQDN} returned as: ${STATUS}"
-    
-    # Pre-Pull Images
-    docker run --rm docker/dtr:"${DTR_VERSION}" images --list | xargs -L 1 docker pull
 
     if [ "$STATUS" -eq 200 ]; then
         echo "checkDTR: Successfully queried the DTR API. DTR is installed. Joining node to existing cluster."
@@ -47,14 +47,14 @@ installDTR() {
 
     # Install Docker Trusted Registry
     docker run \
-        --rm \
-        docker/dtr:${DTR_VERSION} install \
-        --dtr-external-url "https://${DTR_FQDN}" \
-        --ucp-url "https://${UCP_FQDN}:${UCP_CONTROLLER_PORT}" \
-        --ucp-node "${UCP_NODE}" \
-        --ucp-username "${UCP_USERNAME}" \
-        --ucp-password "${UCP_PASSWORD}" \
-        --ucp-insecure-tls 
+      --rm \
+      docker/dtr:${DTR_VERSION} install \
+      --dtr-external-url "https://${DTR_FQDN}" \
+      --ucp-url "https://${UCP_FQDN}:${UCP_CONTROLLER_PORT}" \
+      --ucp-node "${UCP_NODE}" \
+      --ucp-username "${UCP_USERNAME}" \
+      --ucp-password "${UCP_PASSWORD}" \
+      --ucp-insecure-tls 
 
     echo "installDTR: Finished installing Docker Trusted Registry (DTR)"
 
@@ -63,19 +63,19 @@ installDTR() {
 joinDTR() {
 
     # Get DTR Replica ID
-    REPLICA_ID=$(curl --request GET --insecure --silent --url "https://${DTR_FQDN}/api/v0/meta/settings" -u "${UCP_USERNAME}":"${UCP_PASSWORD}" --header 'Accept: application/json' | jq --raw-output .replicaID)
+    REPLICA_ID=$(curl --request GET --insecure --silent --url "https://${DTR_FQDN}/api/v0/meta/settings" --user "${UCP_USERNAME}":"${UCP_PASSWORD}" --header 'Accept: application/json' | jq --raw-output .replicaID)
     echo "joinDTR: Joining DTR with Replica ID ${REPLICA_ID}"
 
     # Join an existing Docker Trusted Registry
     docker run \
-        --rm \
-        docker/dtr:${DTR_VERSION} join \
-        --existing-replica-id "${REPLICA_ID}" \
-        --ucp-url "https://${UCP_FQDN}" \
-        --ucp-node "${UCP_NODE}" \
-        --ucp-username "${UCP_USERNAME}" \
-        --ucp-password "${UCP_PASSWORD}" \
-        --ucp-insecure-tls
+      --rm \
+      docker/dtr:${DTR_VERSION} join \
+      --existing-replica-id "${REPLICA_ID}" \
+      --ucp-url "https://${UCP_FQDN}:${UCP_CONTROLLER_PORT}" \
+      --ucp-node "${UCP_NODE}" \
+      --ucp-username "${UCP_USERNAME}" \
+      --ucp-password "${UCP_PASSWORD}" \
+      --ucp-insecure-tls
 
 }
 
