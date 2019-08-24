@@ -1,0 +1,360 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2015-01-01/deploymentTemplate.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "dockerEEURL": {
+      "type": "securestring"
+    },
+    "nodes": {
+      "type": "int",
+      "defaultValue": 3
+    },
+    "scripts": {
+      "type": "object",
+      "defaultValue": {
+        "installDockerEE": "https://raw.githubusercontent.com/Microsoft/Docker-EE-on-Azure-Stack-Deployment/master/multi-node/install-docker-ee.sh",
+        "installUCP": "https://raw.githubusercontent.com/Microsoft/Docker-EE-on-Azure-Stack-Deployment/master/multi-node/install-ucp.sh",
+        "installDTR": "https://raw.githubusercontent.com/Microsoft/Docker-EE-on-Azure-Stack-Deployment/master/multi-node/install-dtr.sh"
+      }
+    },
+    "credentials": {
+      "type": "object",
+      "defaultValue": {
+        "adminUsername": "dockeradmin",
+        "adminPassword": "DockerEE123!"
+      }
+    },
+    "versions": {
+      "type": "object",
+      "defaultValue": {
+        "engine": "stable-19.03",
+        "ucp": "latest",
+        "dtr": "latest"
+      }
+    }
+  },
+  "variables": {
+    "labName": "[uniqueString(resourceGroup().id))]",
+    "shared": {
+      "storage": {
+        "name": "[concat('sa', uniqueString(resourceGroup().id))]",
+        "type": "Premium_LRS",
+        "vhdContainerName": "vhd"
+      },
+      "networking": {
+        "name": "vnet",
+        "addressPrefixes": [
+          "10.0.0.0/16"
+        ],
+        "subnets": [{
+          "name": "nodes",
+          "properties": {
+            "addressPrefix": "10.0.0.0/24"
+          }
+        }]
+      }
+    },
+    "dtr": {
+      "instances": "[parameters('nodes')]",
+      "avSet": "nodes",
+      "subnet": "[resourceId('Microsoft.Network/virtualNetworks/subnets', variables('shared').networking.name, 'nodes')]",
+      "vmSize": "Standard_DS2_v2",
+      "imageReference": {
+        "publisher": "Canonical",
+        "offer": "UbuntuServer",
+        "sku": "16.04-LTS",
+        "version": "latest"
+      }
+    },
+    "api": {
+      "availabilitySets": "2018-10-01",
+      "loadBalancers": "2018-07-01",
+      "networkInterfaces": "2019-04-01",
+      "publicIPAddresses": "2018-07-01",
+      "storageAccounts": "2019-04-01",
+      "virtualMachines": "2018-10-01",
+      "virtualNetworks": "2018-07-01"
+    }
+  },
+  "resources": [{
+      "type": "Microsoft.Storage/storageAccounts",
+      "name": "[toLower(variables('shared').storage.name)]",
+      "apiVersion": "[variables('api').storageAccounts]",
+      "location": "[resourceGroup().location]",
+      "tags": {
+        "displayName": "StorageAccount"
+      },
+      "sku": {
+        "name": "[variables('shared').storage.type]"
+      }
+    },
+    {
+      "apiVersion": "[variables('api').virtualNetworks]",
+      "type": "Microsoft.Network/virtualNetworks",
+      "name": "vnet",
+      "location": "[resourceGroup().location]",
+      "tags": {
+        "displayName": "Virtual Network"
+      },
+      "properties": {
+        "addressSpace": {
+          "addressPrefixes": "[variables('shared').networking.addressPrefixes]"
+        },
+        "subnets": "[variables('shared').networking.subnets]"
+      }
+    },
+    {
+      "type": "Microsoft.Compute/availabilitySets",
+      "name": "[variables('dtr').avSet]",
+      "apiVersion": "[variables('api').availabilitySets]",
+      "location": "[resourceGroup().location]",
+      "tags": {
+        "displayName": "Availability Set - DTR"
+      },
+      "sku": {
+        "name": "Aligned"
+      },
+      "properties": {
+        "platformFaultDomainCount": 2,
+        "platformUpdateDomainCount": 5
+      }
+    },
+    {
+      "apiVersion": "[variables('api').publicIPAddresses]",
+      "type": "Microsoft.Network/publicIPAddresses",
+      "name": "dtr",
+      "location": "[resourceGroup().location]",
+      "tags": {
+        "displayName": "PIP - DTR"
+      },
+      "properties": {
+        "publicIPAllocationMethod": "Dynamic",
+        "dnsSettings": {
+          "domainNameLabel": "[concat('dtr-', variables('labName'))]"
+        }
+      }
+    },
+    {
+      "apiVersion": "[variables('api').publicIPAddresses]",
+      "type": "Microsoft.Network/publicIPAddresses",
+      "name": "[concat('dtr-', padLeft(copyIndex(1), 2, '0'))]",
+      "location": "[resourceGroup().location]",
+      "tags": {
+        "displayName": "PIP - DTR Workers"
+      },
+      "copy": {
+        "name": "PIPCopy",
+        "count": "[variables('dtr').instances]"
+      },
+      "properties": {
+        "publicIPAllocationMethod": "Dynamic",
+        "dnsSettings": {
+          "domainNameLabel": "[concat(variables('labName'), '-dtr', padLeft(copyIndex(1), 2, '0'))]"
+        }
+      }
+    },
+    {
+      "type": "Microsoft.Network/loadBalancers",
+      "name": "dtr",
+      "apiVersion": "[variables('api').loadBalancers]",
+      "location": "[resourceGroup().location]",
+      "tags": {
+        "displayName": "LB - DTR"
+      },
+      "properties": {
+        "frontendIPConfigurations": [{
+          "name": "LoadBalancerFrontEnd",
+          "properties": {
+            "privateIPAllocationMethod": "Dynamic",
+            "publicIPAddress": {
+              "id": "[resourceId('Microsoft.Network/publicIPAddresses', 'dtr')]"
+            }
+          }
+        }],
+        "backendAddressPools": [{
+          "name": "LoadBalancerBackEnd"
+        }],
+        "loadBalancingRules": [{
+            "name": "tcp80",
+            "properties": {
+              "frontendIPConfiguration": {
+                "id": "[resourceId('Microsoft.Network/loadBalancers/frontendIpConfigurations', 'dtr', 'LoadBalancerFrontEnd')]"
+              },
+              "frontendPort": 80,
+              "backendPort": 80,
+              "enableFloatingIP": false,
+              "idleTimeoutInMinutes": 4,
+              "protocol": "Tcp",
+              "loadDistribution": "Default",
+              "backendAddressPool": {
+                "id": "[resourceId('Microsoft.Network/loadBalancers/backendAddressPools', 'dtr', 'LoadBalancerBackEnd')]"
+              },
+              "probe": {
+                "id": "[resourceId('Microsoft.Network/loadBalancers/probes', 'dtr', 'tcp80')]"
+              }
+            }
+          },
+          {
+            "name": "tcp443",
+            "properties": {
+              "frontendIPConfiguration": {
+                "id": "[resourceId('Microsoft.Network/loadBalancers/frontendIpConfigurations', 'dtr', 'LoadBalancerFrontEnd')]"
+              },
+              "frontendPort": 443,
+              "backendPort": 443,
+              "enableFloatingIP": false,
+              "idleTimeoutInMinutes": 4,
+              "protocol": "Tcp",
+              "loadDistribution": "Default",
+              "backendAddressPool": {
+                "id": "[resourceId('Microsoft.Network/loadBalancers/backendAddressPools', 'dtr', 'LoadBalancerBackEnd')]"
+              },
+              "probe": {
+                "id": "[resourceId('Microsoft.Network/loadBalancers/probes', 'dtr', 'tcp443')]"
+              }
+            }
+          },
+          {
+            "name": "tcp8080",
+            "properties": {
+              "frontendIPConfiguration": {
+                "id": "[resourceId('Microsoft.Network/loadBalancers/frontendIpConfigurations', 'dtr', 'LoadBalancerFrontEnd')]"
+              },
+              "frontendPort": 8080,
+              "backendPort": 8080,
+              "enableFloatingIP": false,
+              "idleTimeoutInMinutes": 4,
+              "protocol": "Tcp",
+              "loadDistribution": "Default",
+              "backendAddressPool": {
+                "id": "[resourceId('Microsoft.Network/loadBalancers/backendAddressPools', 'dtr', 'LoadBalancerBackEnd')]"
+              },
+              "probe": {
+                "id": "[resourceId('Microsoft.Network/loadBalancers/probes', 'dtr', 'tcp8080')]"
+              }
+            }
+          }
+        ],
+        "probes": [{
+            "name": "tcp80",
+            "properties": {
+              "protocol": "Tcp",
+              "port": 80,
+              "intervalInSeconds": 5,
+              "numberOfProbes": 2
+            }
+          },
+          {
+            "name": "tcp443",
+            "properties": {
+              "protocol": "Tcp",
+              "port": 443,
+              "intervalInSeconds": 5,
+              "numberOfProbes": 2
+            }
+          },
+          {
+            "name": "tcp8080",
+            "properties": {
+              "protocol": "Tcp",
+              "port": 8080,
+              "intervalInSeconds": 5,
+              "numberOfProbes": 2
+            }
+          }
+        ]
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Network/publicIPAddresses', 'dtr')]"
+      ]
+    },
+    {
+      "type": "Microsoft.Network/networkInterfaces",
+      "name": "[concat('dtr-', padLeft(copyIndex(1), 2, '0'))]",
+      "apiVersion": "[variables('api').networkInterfaces]",
+      "location": "[resourceGroup().location]",
+      "tags": {
+        "displayName": "NIC - DTRs"
+      },
+      "copy": {
+        "name": "NICCopy",
+        "count": "[variables('dtr').instances]"
+      },
+      "properties": {
+        "ipConfigurations": [{
+          "name": "ipconfig",
+          "properties": {
+            "primary": "true",
+            "privateIPAllocationMethod": "Static",
+            "publicIPAddress": {
+              "id": "[resourceId('Microsoft.Network/publicIPAddresses', concat('dtr-', padLeft(copyIndex(1), 2, '0')))]"
+            },
+            "subnet": {
+              "id": "[variables('dtr').subnet]"
+            },
+            "loadBalancerBackendAddressPools": [{
+              "id": "[resourceId('Microsoft.Network/loadBalancers/backendAddressPools', 'dtr', 'LoadBalancerBackEnd')]"
+            }]
+          }
+        }]
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Network/virtualNetworks', 'vnet')]",
+        "[resourceId('Microsoft.Network/publicIPAddresses', concat('dtr-', padLeft(copyIndex(1), 2, '0')))]",
+        "[resourceId('Microsoft.Network/loadBalancers', 'dtr')]"
+      ]
+    },
+    {
+      "type": "Microsoft.Compute/virtualMachines",
+      "copy": {
+        "name": "VMCopy",
+        "count": "[variables('dtr').instances]"
+      },
+      "name": "[concat('dtr-', padLeft(copyIndex(1), 2, '0'))]",
+      "apiVersion": "[variables('api').virtualMachines]",
+      "location": "[resourceGroup().location]",
+      "tags": {
+        "displayName": "VM - DTRs"
+      },
+      "properties": {
+        "hardwareProfile": {
+          "vmSize": "[variables('dtr').vmSize]"
+        },
+        "storageProfile": {
+          "imageReference": "[variables('dtr').imageReference]",
+          "osDisk": {
+            "diskSizeGB": 128,
+            "managedDisk": {
+              "storageAccountType": "Premium_LRS"
+            },
+            "createOption": "FromImage"
+          }
+        },
+        "osProfile": {
+          "computerName": "[concat('dtr', padLeft(copyIndex(1), 2, '0'))]",
+          "adminUsername": "[parameters('credentials').adminUsername]",
+          "adminPassword": "[parameters('credentials').adminPassword]"
+        },
+        "networkProfile": {
+          "networkInterfaces": [{
+            "id": "[resourceId('Microsoft.Network/networkInterfaces', concat('dtr-', padLeft(copyIndex(1), 2, '0')))]"
+          }]
+        },
+        "availabilitySet": {
+          "id": "[resourceId('Microsoft.Compute/availabilitySets', 'dtr')]"
+        }
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Compute/availabilitySets', variables('dtr').avSet)]",
+        "[resourceId('Microsoft.Network/networkInterfaces', concat('dtr-', padLeft(copyIndex(1), 2, '0')))]"
+      ],
+      "resources": []
+    }
+  ],
+  "outputs": {
+    "dtr_FQDN": {
+      "type": "string",
+      "value": "[concat('https://', reference(resourceId('Microsoft.Network/publicIPAddresses', 'dtr')).dnsSettings.fqdn)]"
+    }
+  }
+}
