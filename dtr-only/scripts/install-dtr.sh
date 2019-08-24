@@ -28,21 +28,18 @@ readonly UCP_CONTROLLER_PORT=5000
 
 checkDTR() {
 
-    # Pre-Pull Images
-    docker run --rm docker/dtr:"${DTR_VERSION}" images --list | xargs -L 1 docker pull
+  # Check if DTR exists by attempting to hit its load balancer
+  STATUS=$(curl --request GET --url "https://${DTR_FQDN}/_ping" --insecure --silent --output /dev/null -w '%{http_code}' --max-time 5)
+  
+  echo "checkDTR: API status for ${DTR_FQDN} returned as: ${STATUS}"
 
-    # Check if DTR exists by attempting to hit its load balancer
-    STATUS=$(curl --request GET --url "https://${DTR_FQDN}/_ping" --insecure --silent --output /dev/null -w '%{http_code}' --max-time 5)
-    
-    echo "checkDTR: API status for ${DTR_FQDN} returned as: ${STATUS}"
-
-    if [ "$STATUS" -eq 200 ]; then
-        echo "checkDTR: Successfully queried the DTR API. DTR is installed. Joining node to existing cluster."
-        joinDTR
-    else
-        echo "checkDTR: Failed to query the DTR API. DTR is not installed. Installing DTR."
-        installDTR
-    fi
+  if [ "$STATUS" -eq 200 ]; then
+      echo "checkDTR: Successfully queried the DTR API. DTR is installed. Joining node to existing cluster."
+      joinDTR
+  else
+      echo "checkDTR: Failed to query the DTR API. DTR is not installed. Installing DTR."
+      installDTR
+  fi
 
 }
 
@@ -88,6 +85,8 @@ joinDTR() {
 
 configureStorage() {
 
+  echo "configureStorage: Beginning configuration of Azure Storage"
+
   curl \
     --insecure \
     --request PUT \
@@ -113,6 +112,7 @@ configureStorage() {
       }
     }"
 
+  echo "configureStorage: Finished configuration of Azure Storage"
 
 }
 

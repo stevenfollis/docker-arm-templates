@@ -38,7 +38,7 @@
     "shared": {
       "storage": {
         "name": "[concat('sa', uniqueString(resourceGroup().id))]",
-        "sku": "Premium_LRS",
+        "sku": "Standard_LRS",
         "kind": "StorageV2",
         "container": "dtr"
       },
@@ -86,7 +86,7 @@
         "displayName": "StorageAccount"
       },
       "sku": {
-        "name": "[variables('shared').storage.type]"
+        "name": "[variables('shared').storage.sku]"
       },
       "kind": "StorageV2",
       "resources": [{
@@ -358,7 +358,8 @@
       "type": "Microsoft.Compute/virtualMachines",
       "copy": {
         "name": "VMCopy",
-        "count": "[sub(variables('dtr').instances, 1)]"
+        "count": "[sub(variables('dtr').instances, 1)]",
+        "mode": "Serial"
       },
       "name": "[concat('dtr-', padLeft(copyIndex(2), 2, '0'))]",
       "apiVersion": "[variables('api').virtualMachines]",
